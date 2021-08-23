@@ -1,3 +1,5 @@
+@file:Suppress("unused")
+
 package kscript.app
 
 import kscript.app.ShellUtils.requireInPath
@@ -13,6 +15,7 @@ import java.net.URL
 import java.net.UnknownHostException
 import java.util.*
 import kotlin.system.exitProcess
+import kotlin.io.path.createTempDirectory
 
 
 /**
@@ -59,7 +62,7 @@ val KSCRIPT_CACHE_DIR = System.getenv("KSCRIPT_CACHE_DIR")?.let { File(it) }
     ?: File(System.getProperty("user.home")!!, ".kscript")
 
 // use lazy here prevent empty dirs for regular scripts https://github.com/holgerbrandl/kscript/issues/130
-val SCRIPT_TEMP_DIR by lazy { createTempDir() }
+val SCRIPT_TEMP_DIR: File by lazy { createTempDirectory().toFile() }
 
 @Language("sh")
 private val BOOTSTRAP_HEADER = """
@@ -101,7 +104,7 @@ fun main(args: Array<String>) {
     // optionally clear up the jar cache
     if (docopt.getBoolean("clear-cache")) {
         info("Cleaning up cache...")
-        KSCRIPT_CACHE_DIR.listFiles().forEach { it.delete() }
+        KSCRIPT_CACHE_DIR.listFiles()?.forEach { it.delete() }
         //        evalBash("rm -f ${KSCRIPT_CACHE_DIR}/*")
         quit(0)
     }
@@ -167,10 +170,10 @@ fun main(args: Array<String>) {
 
     //  Optionally enter interactive mode
     if (docopt.getBoolean("interactive")) {
-        infoMsg("Creating REPL from ${scriptFile}")
+        infoMsg("Creating REPL from $scriptFile")
         //        System.err.println("kotlinc ${kotlinOpts} -classpath '${classpath}'")
 
-        println("kotlinc ${compilerOpts} ${kotlinOpts} ${optionalCpArg}")
+        println("kotlinc $compilerOpts $kotlinOpts $optionalCpArg")
 
         exitProcess(0)
     }
@@ -196,11 +199,12 @@ fun main(args: Array<String>) {
 
     // Capitalize first letter and get rid of dashes (since this is what kotlin compiler is doing for the wrapper to create a valid java class name)
     // For valid characters see https://stackoverflow.com/questions/4814040/allowed-characters-in-filename
+    @Suppress("DEPRECATION")
     val className = scriptFile.nameWithoutExtension
         .replace("[^A-Za-z0-9]".toRegex(), "_")
         .capitalize()
         // also make sure that it is a valid identifier by avoiding an initial digit (to stay in sync with what the kotlin script compiler will do as well)
-        .let { if ("^[0-9]".toRegex().containsMatchIn(it)) "_" + it else it }
+        .let { if ("^[0-9]".toRegex().containsMatchIn(it)) "_$it" else it }
 
 
     // Define the entrypoint for the scriptlet jar
@@ -213,6 +217,7 @@ fun main(args: Array<String>) {
 
 
     // infer KOTLIN_HOME if not set
+    @Suppress("LocalVariableName")
     val KOTLIN_HOME = System.getenv("KOTLIN_HOME") ?: guessKotlinHome()
 
     errorIf(KOTLIN_HOME == null) {
@@ -238,7 +243,7 @@ fun main(args: Array<String>) {
         // create main-wrapper for kts scripts
 
         val wrapperSrcArg = if (scriptFileExt == "kts") {
-            val mainKotlin = File(createTempDir("kscript"), execClassName + ".kt")
+            val mainKotlin = File(createTempDirectory("kscript").toFile(), "$execClassName.kt")
 
             val classReference = (script.pckg ?: "") + className
 
@@ -247,7 +252,7 @@ fun main(args: Array<String>) {
                 companion object {
                     @JvmStatic
                     fun main(args: Array<String>) {
-                        val script = Main_${className}::class.java.classLoader.loadClass("${classReference}")
+                        val script = Main_${className}::class.java.classLoader.loadClass("$classReference")
                         script.getDeclaredConstructor(Array<String>::class.java).newInstance(args);
                     }
                 }
@@ -259,7 +264,8 @@ fun main(args: Array<String>) {
             ""
         }
 
-        val scriptCompileResult = evalBash("kotlinc ${compilerOpts} ${optionalCpArg} -d '${jarFile.absolutePath}' '${scriptFile.absolutePath}' ${wrapperSrcArg}")
+        val scriptCompileResult = evalBash("kotlinc  " +
+                "$compilerOpts $optionalCpArg -d '${jarFile.absolutePath}' '${scriptFile.absolutePath}' $wrapperSrcArg")
         with(scriptCompileResult) {
             errorIf(exitCode != 0) { "compilation of '$scriptResource' failed\n$stderr" }
         }
@@ -267,7 +273,7 @@ fun main(args: Array<String>) {
 
 
     // print the final command to be run by eval+exec
-    val joinedUserArgs = userArgs.map { "\"${it.replace("\"", "\\\"")}\"" }.joinToString(" ")
+    val joinedUserArgs = userArgs.joinToString(" ") { "\"${it.replace("\"", "\\\"")}\"" }
 
     //if requested try to package the into a standalone binary
     if (docopt.getBoolean("package")) {
@@ -286,7 +292,7 @@ fun main(args: Array<String>) {
     if (classpath.isNotEmpty())
         extClassPath += CP_SEPARATOR_CHAR + classpath
 
-    println("kotlin ${kotlinOpts} -classpath \"${extClassPath}\" ${execClassName} ${joinedUserArgs} ")
+    println("kotlin $kotlinOpts -classpath \"${extClassPath}\" $execClassName $joinedUserArgs ")
 }
 
 
@@ -299,8 +305,8 @@ private fun versionCheck() {
     val kscriptRawReleaseURL = "https://raw.githubusercontent.com/holgerbrandl/kscript/releases/kscript"
 
     val latestVersion = try {
-        BufferedReader(InputStreamReader(URL(kscriptRawReleaseURL).openStream())).useLines {
-            it.first { it.startsWith("KSCRIPT_VERSION") }.split("=")[1]
+        BufferedReader(InputStreamReader(URL(kscriptRawReleaseURL).openStream())).useLines { lines ->
+            lines.first { it.startsWith("KSCRIPT_VERSION") }.split("=")[1]
         }
     } catch (e: UnknownHostException) {
         return // skip version check here, since the use has no connection to the internet at the moment
@@ -350,7 +356,7 @@ fun prepareScript(scriptResource: String): Pair<File, URI> {
 
     // support stdin
     if (scriptResource == "-" || scriptResource == "/dev/stdin") {
-        val scriptText = generateSequence() { readLine() }.joinToString("\n").trim()
+        val scriptText = generateSequence { readLine() }.joinToString("\n").trim()
         scriptFile = createTmpScript(scriptText)
     }
 

@@ -1,3 +1,5 @@
+@file:Suppress("MemberVisibilityCanBePrivate")
+
 package kscript.app
 
 import java.io.File
@@ -9,7 +11,7 @@ data class Script(val lines: List<String>, val extension: String = "kts") : Iter
 
     /** Returns a the namespace/package of the script (if declared). */
     val pckg by lazy {
-        lines.find { it.startsWith("package ") }?.split("[ ]+".toRegex())?.get(1)?.run { this + "." }
+        lines.find { it.startsWith("package ") }?.split("[ ]+".toRegex())?.get(1)?.run { "$this." }
     }
 
     override fun toString(): String = lines.joinToString("\n")
@@ -18,7 +20,7 @@ data class Script(val lines: List<String>, val extension: String = "kts") : Iter
     override fun iterator(): Iterator<String> = lines.iterator()
 
 
-    fun stripShebang(): Script = copy(lines.filterNot { it.startsWith("#!/") })
+    fun stripShebang(): Script = copy(lines = lines.filterNot { it.startsWith("#!/") })
 
 
     fun createTmpScript() = createTmpScript(toString(), extension)
@@ -147,7 +149,7 @@ private fun String.extractAnnotParams(): List<String> {
     // fail if any argument is a comma separated list of artifacts (see #101)
     annotationArgs.filter { it.contains(",[^)]".toRegex()) }.let {
         errorIf(it.isNotEmpty()) {
-            "Artifact locators must be provided as separate annotation arguments and not as comma-separated list: " + it
+            "Artifact locators must be provided as separate annotation arguments and not as comma-separated list: $it"
         }
     }
 
@@ -202,11 +204,9 @@ fun Script.collectRepos(): List<MavenRepo> {
                 val keyValSep = "[ ]*=[ ]*\"".toRegex()
 
                 val namedArgs = annotationParams
-                    .filter { it.contains(keyValSep) }
-                    .map { keyVal ->
+                    .filter { it.contains(keyValSep) }.associate { keyVal ->
                         keyVal.split(keyValSep).map { it.trim(' ', '\"') }.let { it.first() to it.last() }
                     }
-                    .toMap()
 
                 if (annotationParams.size < 2) {
                     throw IllegalArgumentException("Missing ${2 - annotationParams.size} of the required arguments for @file:MavenRepository(id, url)")

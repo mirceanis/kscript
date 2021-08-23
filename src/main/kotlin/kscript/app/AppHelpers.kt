@@ -1,3 +1,5 @@
+@file:Suppress("unused", "MemberVisibilityCanBePrivate")
+
 package kscript.app
 
 import kscript.app.ShellUtils.requireInPath
@@ -6,6 +8,7 @@ import java.net.URL
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.security.MessageDigest
+import java.util.*
 import java.util.function.Consumer
 import kotlin.system.exitProcess
 
@@ -14,8 +17,8 @@ data class ProcessResult(val command: String, val exitCode: Int, val stdout: Str
 
     override fun toString(): String {
         return """
-            Exit Code   : ${exitCode}Comand      : ${command}
-            Stdout      : ${stdout}
+            Exit Code   : ${exitCode}Comand      : $command
+            Stdout      : $stdout
             Stderr      : """.trimIndent() + "\n" + stderr
     }
 }
@@ -75,7 +78,7 @@ internal class StreamGobbler(private val inputStream: InputStream, private val c
 }
 
 internal open class StringBuilderConsumer : Consumer<String> {
-    val sb = StringBuilder()
+    private val sb = StringBuilder()
 
     override fun accept(t: String) {
         sb.appendLine(t)
@@ -99,13 +102,13 @@ object ShellUtils {
 fun info(msg: String) = System.err.println(msg)
 
 
-fun infoMsg(msg: String) = System.err.println("[kscript] " + msg)
+fun infoMsg(msg: String) = System.err.println("[kscript] $msg")
 
 
-fun warnMsg(msg: String) = System.err.println("[kscript] [WARN] " + msg)
+fun warnMsg(msg: String) = System.err.println("[kscript] [WARN] $msg")
 
 
-fun errorMsg(msg: String) = System.err.println("[kscript] [ERROR] " + msg)
+fun errorMsg(msg: String) = System.err.println("[kscript] [ERROR] $msg")
 
 
 fun errorIf(value: Boolean, lazyMessage: () -> Any) {
@@ -167,7 +170,7 @@ fun md5(byteProvider: () -> ByteArray): String {
     //    md.update(byteProvider())
     //    val digestInHex = DatatypeConverter.printHexBinary(md.digest()).toLowerCase()
 
-    val digestInHex = bytesToHex(md.digest()).toLowerCase()
+    val digestInHex = bytesToHex(md.digest()).lowercase(Locale.getDefault())
 
     return digestInHex.substring(0, 16)
 }
@@ -180,7 +183,7 @@ fun md5(file: File) = md5 { Files.readAllBytes(Paths.get(file.toURI())) }
 
 // from https://github.com/frontporch/pikitis/blob/master/src/test/kotlin/repacker.tests.kt
 private fun bytesToHex(buffer: ByteArray): String {
-    val HEX_CHARS = "0123456789ABCDEF".toCharArray()
+    @Suppress("LocalVariableName") val HEX_CHARS = "0123456789ABCDEF".toCharArray()
 
     val len = buffer.count()
     val result = StringBuffer(len * 2)
@@ -211,7 +214,7 @@ fun launchIdeaWithKscriptlet(scriptFile: File,
 
     requireInPath(intellijCommand, "Could not find '$intellijCommand' in your PATH. You must set the command used to launch your intellij as 'KSCRIPT_IDEA_COMMAND' env property")
 
-    infoMsg("Setting up idea project from ${scriptFile}")
+    infoMsg("Setting up idea project from $scriptFile")
 
     //    val tmpProjectDir = createTempDir("edit_kscript", suffix="")
     //            .run { File(this, "kscript_tmp_project") }
@@ -238,11 +241,11 @@ fun launchIdeaWithKscriptlet(scriptFile: File,
         """.trimIndent()
     )
 
-    val stringifiedDeps = dependencies.map {
+    val stringifiedDeps = dependencies.joinToString("\n") {
         """
 |    implementation("$it")
 """.trimMargin()
-    }.joinToString("\n")
+    }
 
     fun MavenRepo.stringifiedRepoCredentials(): String{
        return  takeIf { user.isNotBlank() || password.isNotBlank() }?.let {
@@ -255,14 +258,14 @@ fun launchIdeaWithKscriptlet(scriptFile: File,
         } ?: ""
     }
 
-    val stringifiedRepos = customRepos.map {
+    val stringifiedRepos = customRepos.joinToString("\n") {
         """
 |    maven {
 |        url = uri("${it.url}")
          ${it.stringifiedRepoCredentials()}
 |    }
     """.trimMargin()
-    }.joinToString("\n")
+    }
 
     // We split on space after having joined by space so we have lost some information on how
     // the options where passed. It might cause some issues if some compiler options contain spaces
@@ -325,15 +328,14 @@ $kotlinOptions
         // also symlink all includes
         includeURLs.distinctBy { it.fileName() }
                 .forEach {
-                    val symlinkSrcDirAndDestination = when {
-                        it.protocol == "file" -> {
+                    val symlinkSrcDirAndDestination = when (it.protocol) {
+                        "file" -> {
                             val includeFile = File(it.toURI())
                             val includeDir = Paths.get(includeFile.absolutePath).parent
                             val symlinkRelativePathToScript = File(this, scriptDir.relativize(includeDir).toFile().path)
                             symlinkRelativePathToScript.mkdirs()
                             Pair(symlinkRelativePathToScript, includeFile)
                         }
-
                         else -> {
                             Pair(this, fetchFromURL(it.toString()))
                         }
@@ -356,6 +358,7 @@ $kotlinOptions
 
 private fun runConfig(scriptFile: File, tmpProjectDir: File, userArgs: List<String>): String {
     return if (scriptFile.extension == "kt") {
+        @Suppress("DEPRECATION")
         """
         <configuration name="${scriptFile.name.substringBeforeLast(".")}" type="JetRunConfigurationType">
             <module name="${tmpProjectDir.name}.main" />
@@ -414,14 +417,12 @@ fun packageKscript(scriptJar: File, wrapperClassName: String, dependencies: List
         .run { File(this, "kscript_tmp_project__${scriptJar.name}_${System.currentTimeMillis()}") }
         .apply { mkdir() }
 
-    val stringifiedDeps = dependencies.map { "    compile \"$it\"" }.joinToString("\n")
-    val stringifiedRepos = customRepos.map { "    maven {\n        url '${it.url}'\n    }\n" }.joinToString("\n")
+    val stringifiedDeps = dependencies.joinToString("\n") { "    compile \"$it\"" }
+    val stringifiedRepos = customRepos.joinToString("\n") { "    maven {\n        url '${it.url}'\n    }\n" }
 
     val jvmOptions = runtimeOptions.split(" ")
         .filter { it.startsWith("-J") }
-        .map { it.removePrefix("-J") }
-        .map { '"' + it + '"' }
-        .joinToString(", ")
+        .map { it.removePrefix("-J") }.joinToString(", ") { '"' + it + '"' }
 
     // https://shekhargulati.com/2015/09/10/gradle-tip-using-gradle-plugin-from-local-maven-repository/
 
@@ -482,5 +483,5 @@ exec java -jar ${'$'}0 "${'$'}@"
     pckgedJar.delete()
     File(tmpProjectDir, "build/libs/${appName}").copyTo(pckgedJar, true).setExecutable(true)
 
-    infoMsg("Finished packaging into ${pckgedJar}")
+    infoMsg("Finished packaging into $pckgedJar")
 }

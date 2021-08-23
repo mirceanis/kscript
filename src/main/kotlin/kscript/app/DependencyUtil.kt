@@ -1,19 +1,21 @@
+@file:Suppress("unused")
+
 package kscript.app
 
 import kotlinx.coroutines.runBlocking
-import org.eclipse.aether.artifact.DefaultArtifact
 import java.io.File
+import java.util.*
 import kotlin.script.experimental.api.valueOrThrow
 import kotlin.script.experimental.dependencies.CompoundDependenciesResolver
 import kotlin.script.experimental.dependencies.FileSystemDependenciesResolver
-import kotlin.script.experimental.dependencies.RepositoryCoordinates
 import kotlin.script.experimental.dependencies.maven.MavenDependenciesResolver
 import kotlin.script.experimental.dependencies.maven.MavenRepositoryCoordinates
 
 
 val DEP_LOOKUP_CACHE_FILE = File(KSCRIPT_CACHE_DIR, "dependency_cache.txt")
 
-val CP_SEPARATOR_CHAR = if (System.getProperty("os.name").toLowerCase().contains("windows")) ";" else ":"
+val CP_SEPARATOR_CHAR =
+    if (System.getProperty("os.name").lowercase(Locale.getDefault()).contains("windows")) ";" else ":"
 
 
 fun resolveDependencies(depIds: List<String>, customRepos: List<MavenRepo> = emptyList(), loggingEnabled: Boolean): String? {
@@ -27,14 +29,14 @@ fun resolveDependencies(depIds: List<String>, customRepos: List<MavenRepo> = emp
 
 
     // Use cached classpath from previous run if present
-    if (DEP_LOOKUP_CACHE_FILE.isFile()) {
+    if (DEP_LOOKUP_CACHE_FILE.isFile) {
         val cache = DEP_LOOKUP_CACHE_FILE
                 .readLines()
                 .filter { it.isNotBlank() }
                 .associateBy({ it.split(" ")[0] }, { it.split(" ")[1] })
 
         if (cache.containsKey(depsHash)) {
-            val cachedCP = cache.get(depsHash)!!
+            val cachedCP = cache[depsHash]!!
 
 
             // Make sure that local dependencies have not been wiped since resolving them (like by deleting .m2) (see #146)
@@ -51,12 +53,12 @@ fun resolveDependencies(depIds: List<String>, customRepos: List<MavenRepo> = emp
 
     try {
         val artifacts = resolveDependenciesViaKotlin(depIds, customRepos, loggingEnabled)
-        val classPath = artifacts.map { it.absolutePath }.joinToString(CP_SEPARATOR_CHAR)
+        val classPath = artifacts.joinToString(CP_SEPARATOR_CHAR) { it.absolutePath }
 
         if (loggingEnabled) infoMsg("Dependencies resolved")
 
         // Add classpath to cache
-        DEP_LOOKUP_CACHE_FILE.appendText(depsHash + " " + classPath + "\n")
+        DEP_LOOKUP_CACHE_FILE.appendText("$depsHash $classPath\n")
 
         // Print the classpath
         return classPath
@@ -87,6 +89,7 @@ fun resolveDependenciesViaKotlin(depIds: List<String>, customRepos: List<MavenRe
     // validate dependencies
     depIds.map { depIdToArtifact(it) }
 
+    @Suppress("UnnecessaryVariable")
     val extRepos = customRepos //+ MavenRepo("jcenter", "https://jcenter.bintray.com")
 
     val repoCoords = extRepos.map { MavenRepositoryCoordinates(it.url, it.user, it.password, null, null) }
@@ -128,7 +131,7 @@ fun depIdToArtifact(depId: String) {
 
 fun formatVersion(version: String): String {
     // replace + with open version range for maven
-    return version.let { it ->
+    return version.let {
         if (it.endsWith("+")) {
             "[${it.dropLast(1)},)"
         } else {

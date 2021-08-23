@@ -57,7 +57,7 @@ fun resolveIncludes(template: File, includeContext: URI = template.parentFile.to
             } else {
                 listOf(line)
             }
-        }.let { script.copy(it) }
+        }.let { script.copy(lines = it) }
     }
 
     return IncludeResult(script.consolidateStructure().createTmpScript(), includes)

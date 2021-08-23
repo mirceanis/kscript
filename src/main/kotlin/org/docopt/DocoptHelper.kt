@@ -1,3 +1,5 @@
+@file:Suppress("unused", "MemberVisibilityCanBePrivate")
+
 package org.docopt
 
 import kscript.app.quit
@@ -8,9 +10,9 @@ import java.io.File
  */
 
 /** Simple Kotlin facade for org.org.docopt.Docopt.Docopt(java.lang.String) .*/
-class DocOptWrapper(args: Iterable<String>, val usage: String) {
+class DocOptWrapper(args: Iterable<String>, usage: String) {
 
-    val parsedArgs = try {
+    val parsedArgs: MutableMap<String, Any> = try {
         Docopt(usage).withExit(false).parse(args.toList())
     } catch (e: DocoptExitException) {
         // mimic docopts exit behavior but using process-substituion handler at the end
@@ -22,7 +24,7 @@ class DocOptWrapper(args: Iterable<String>, val usage: String) {
             ps.println(message)
         }
 
-        if (e.getPrintUsage()) {
+        if (e.printUsage) {
             ps.println(usage)
         }
 
